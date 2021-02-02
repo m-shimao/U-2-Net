@@ -222,6 +222,22 @@ class ToTensorLab(object):
 
 		return {'imidx':torch.from_numpy(imidx), 'image': torch.from_numpy(tmpImg), 'label': torch.from_numpy(tmpLbl)}
 
+
+import albumentations as A
+
+class CustomAug(object):
+	def __call__(self,sample):
+		imidx, image, label = sample['imidx'], sample['image'],sample['label']
+		aug = A.Compose([
+			A.HorizontalFlip(p=0.5),
+			A.CLAHE(p=0.8),
+			A.RandomBrightnessContrast(p=0.8),
+			A.RandomGamma(p=0.8)])
+		augmented = aug(image=image, mask=label)
+		img = augmented['image']
+		lbl = augmented['mask']
+		return {'imidx':imidx, 'image':img,'label':lbl}
+
 class SalObjDataset(Dataset):
 	def __init__(self,img_name_list,lbl_name_list,transform=None):
 		# self.root_dir = root_dir
