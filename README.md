@@ -1,3 +1,5 @@
+portrait の再現実験のためにFork
+
 # U^2-Net (U square net)
 
 The code for our paper **U^2-Net (U square net)** published in Pattern Recognition 2020:
