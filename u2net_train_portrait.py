@@ -4,6 +4,7 @@ import torchvision
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import LambdaLR
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
@@ -57,12 +58,27 @@ def save_output(image_name, pred, d_dir, prefix):
     imo.save(d_dir + '/' + prefix + '_' + imidx + '.png')
 
 
+class loss_scheduler():
+    def __init__(self, epoch_decay):
+        self.epoch_decay = epoch_decay
+
+    def f(self, epoch):
+        #ベースの学習率に対する倍率を返す(pytorch仕様)
+        if epoch <= self.epoch_decay:
+            return 1
+        else:
+            scaling = 1 - (epoch - self.epoch_decay) / float(self.epoch_decay)
+            if scaling < 0.0001:
+                scaling = 0.0001
+            return scaling
+
 # ------- 1. define loss function --------
 
 bce_loss = nn.BCELoss(size_average=True)
 
 def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
-
+# 	labels_v[labels_v < 0.5] = 0.
+# 	labels_v[labels_v >= 0.5] = 1.
 	loss0 = bce_loss(d0,labels_v)
 	loss1 = bce_loss(d1,labels_v)
 	loss2 = bce_loss(d2,labels_v)
@@ -72,7 +88,7 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 	loss6 = bce_loss(d6,labels_v)
 
 	loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
-	print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f\n"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
+	print("l0: %3f, l1: %3f, l2: %3f, l3: %3f, l4: %3f, l5: %3f, l6: %3f"%(loss0.data.item(),loss1.data.item(),loss2.data.item(),loss3.data.item(),loss4.data.item(),loss5.data.item(),loss6.data.item()))
 
 	return loss0, loss
 
@@ -81,12 +97,11 @@ def muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v):
 
 model_name = 'u2net_portrait' #'u2netp'
 
-# data_dir = os.path.join(os.getcwd(), 'train_data' + os.sep)
+data_dir = os.path.join(os.getcwd(), 'train_data' + os.sep)
 # tra_image_dir = os.path.join('DUTS', 'DUTS-TR', 'DUTS-TR', 'im_aug' + os.sep)
 # tra_label_dir = os.path.join('DUTS', 'DUTS-TR', 'DUTS-TR', 'gt_aug' + os.sep)
-data_dir = os.path.join(os.getcwd(), 'u2net_train/train' + os.sep)
-tra_image_dir = os.path.join('images' + os.sep)
-tra_label_dir = os.path.join('labels' + os.sep)
+tra_image_dir = os.path.join('train', 'images' + os.sep)
+tra_label_dir = os.path.join('train', 'labels' + os.sep)
 
 # image_ext = '.jpg'
 image_ext = '.png'
@@ -96,9 +111,9 @@ model_dir = os.path.join(os.getcwd(), 'saved_models', model_name + os.sep)
 os.makedirs(model_dir, exist_ok=True)
 
 # epoch_num = 100000
-epoch_num = 200
+epoch_num = 10000
 # batch_size_train = 12
-batch_size_train = 6
+batch_size_train = 4
 batch_size_val = 1
 train_num = 0
 val_num = 0
@@ -134,22 +149,40 @@ salobj_dataset = SalObjDataset(
         ToTensorLab(flag=0)]))
 salobj_dataloader = DataLoader(salobj_dataset, batch_size=batch_size_train, shuffle=True, num_workers=1)
 
-test_image_dir = os.path.join(os.getcwd(), 'u2net_train/val' + os.sep)
+val_image_dir = os.path.join('train', 'images' + os.sep)
+val_label_dir = os.path.join('train', 'labels' + os.sep)
+val_img_name_list = glob.glob(data_dir + val_image_dir + '*' + image_ext)
+
+val_lbl_name_list = []
+for img_path in val_img_name_list:
+	img_name = img_path.split(os.sep)[-1]
+
+	aaa = img_name.split(".")
+	bbb = aaa[0:-1]
+	imidx = bbb[0]
+	for i in range(1,len(bbb)):
+		imidx = imidx + "." + bbb[i]
+
+	val_lbl_name_list.append(data_dir + val_label_dir + imidx + label_ext)
+
+print("---")
+print("val images: ", len(val_img_name_list))
+print("val labels: ", len(val_lbl_name_list))
+print("---")
+
+val_num = len(val_img_name_list)
+
+val_salobj_dataset = SalObjDataset(
+    img_name_list=val_img_name_list,
+    lbl_name_list=val_lbl_name_list,
+    transform=transforms.Compose([
+        RescaleT(512),
+        ToTensorLab(flag=0)]))
+val_salobj_dataloader = DataLoader(val_salobj_dataset, batch_size=batch_size_val, shuffle=False, num_workers=1)
+
+
 prediction_dir = os.path.join(os.getcwd(), 'preds', model_name + os.sep)
 os.makedirs(prediction_dir, exist_ok=True)
-
-img_name_list = glob.glob(test_image_dir+'/*')
-print("Number of test images: ", len(img_name_list))
-
-test_salobj_dataset = SalObjDataset(img_name_list = img_name_list,
-                                    lbl_name_list = [],
-                                    transform=transforms.Compose([RescaleT(512),
-                                                                  ToTensorLab(flag=0)])
-                                    )
-test_salobj_dataloader = DataLoader(test_salobj_dataset,
-                                    batch_size=1,
-                                    shuffle=False,
-                                    num_workers=1)
 
 # ------- 3. define model --------
 # define the net
@@ -161,7 +194,9 @@ if torch.cuda.is_available():
 # ------- 4. define optimizer --------
 print("---define optimizer...")
 # optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
-optimizer = optim.Adam(net.parameters(), lr=0.0005, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+optimizer = optim.Adam(net.parameters(), lr=0.0002, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+epoch_decay = epoch_num / 2
+scheduler = LambdaLR(optimizer, lr_lambda=loss_scheduler(epoch_decay).f)
 
 # ------- 5. training process --------
 print("---start training...")
@@ -169,7 +204,7 @@ ite_num = 0
 running_loss = 0.0
 running_tar_loss = 0.0
 ite_num4val = 0
-save_frq = 500  # save the model every iterations
+save_frq = 2000  # save the model every iterations
 
 for epoch in range(0, epoch_num):
     net.train()
@@ -179,6 +214,7 @@ for epoch in range(0, epoch_num):
         ite_num4val = ite_num4val + 1
 
         inputs, labels = data['image'], data['label']
+        labels = 1.0 - labels
 
         inputs = inputs.type(torch.FloatTensor)
         labels = labels.type(torch.FloatTensor)
@@ -207,38 +243,56 @@ for epoch in range(0, epoch_num):
         # del temporary outputs and loss
         del d0, d1, d2, d3, d4, d5, d6, loss2, loss
 
-        print("[epoch: %3d/%3d, batch: %5d/%5d, ite: %d] train loss: %3f, tar: %3f " % (
-        epoch + 1, epoch_num, (i + 1) * batch_size_train, train_num, ite_num, running_loss / ite_num4val, running_tar_loss / ite_num4val))
+        print("[epoch: %3d/%3d, batch: %5d/%5d, ite: %d] train loss: %3f, tar: %3f, lr: %11f" % (
+        epoch + 1, epoch_num, (i + 1) * batch_size_train, train_num, ite_num, running_loss / ite_num4val, running_tar_loss / ite_num4val, scheduler.get_lr()[0]))
 
         if ite_num % save_frq == 0:
-
             torch.save(net.state_dict(), model_dir + model_name+"_bce_itr_%d_train_%3f_tar_%3f.pth" % (ite_num, running_loss / ite_num4val, running_tar_loss / ite_num4val))
-            running_loss = 0.0
-            running_tar_loss = 0.0
 
             # --------- 4. inference for each image ---------
+            running_loss = 0.0
+            running_tar_loss = 0.0
+            ite_num4val = 0
             net.eval()
             with torch.no_grad():
-                for i_test, data_test in enumerate(test_salobj_dataloader):
-                    print("inferencing:", img_name_list[i_test].split(os.sep)[-1])
-                    inputs_test = data_test['image']
-                    inputs_test = inputs_test.type(torch.FloatTensor)
+                for i_test, data in enumerate(val_salobj_dataloader):
+                    ite_num4val = ite_num4val + 1
+                    print("inferencing:", val_img_name_list[i_test].split(os.sep)[-1])
+                    inputs, labels = data['image'], data['label']
+                    labels = 1.0 - labels
 
+                    inputs = inputs.type(torch.FloatTensor)
+                    labels = labels.type(torch.FloatTensor)
+
+                    # wrap them in Variable
                     if torch.cuda.is_available():
-                        inputs_test = Variable(inputs_test.cuda())
+                        inputs_v, labels_v = Variable(inputs.cuda(), requires_grad=False), Variable(labels.cuda(),
+                                                                                                    requires_grad=False)
                     else:
-                        inputs_test = Variable(inputs_test)
+                        inputs_v, labels_v = Variable(inputs, requires_grad=False), Variable(labels, requires_grad=False)
 
-                    p_d1, _, _, _, _, _, _ = net(inputs_test)
+                    d0, d1, d2, d3, d4, d5, d6 = net(inputs_v)
+                    loss2, loss = muti_bce_loss_fusion(d0, d1, d2, d3, d4, d5, d6, labels_v)
+                    running_loss += loss.data.item()
+                    running_tar_loss += loss2.data.item()
+
+                    # del temporary outputs and loss
+                    del d0, d1, d2, d3, d4, d5, d6, loss2, loss
 
                     # normalization
-                    pred = 1.0 - p_d1[:,0,:,:]
+                    pred = 1.0 - d0[:,0,:,:]
                     pred = normPRED(pred)
 
                     # save results to test_results folder
-                    save_output(img_name_list[i_test], pred, prediction_dir, str(ite_num))
+                    save_output(val_img_name_list[i_test], pred, prediction_dir, str(ite_num))
 
-                    del p_d1
+                    del d0, d1, d2, d3, d4, d5, d6, loss2, loss
+
+            print("[val loss: %3f, tar: %3f" % (running_loss / ite_num4val, running_tar_loss / ite_num4val))
 
             net.train()  # resume train
+            running_loss = 0.0
+            running_tar_loss = 0.0
             ite_num4val = 0
+
+    scheduler.step()

@@ -230,9 +230,13 @@ class CustomAug(object):
 		imidx, image, label = sample['imidx'], sample['image'],sample['label']
 		aug = A.Compose([
 			A.HorizontalFlip(p=0.5),
-			A.CLAHE(p=0.8),
-			A.RandomBrightnessContrast(p=0.8),
-			A.RandomGamma(p=0.8)])
+			A.Rotate(limit=15, p=0.5),
+			A.Downscale(p=0.1),
+			A.GaussNoise(p=0.1),
+			A.ISONoise(p=0.1),
+			A.CLAHE(clip_limit=2.0, p=0.2),
+			A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.2),
+			A.RandomGamma(p=0.2)])
 		augmented = aug(image=image, mask=label)
 		img = augmented['image']
 		lbl = augmented['mask']
