@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt upgrade -y --fix-missing && apt update --fix-missing && \
     apt install -y --no-install-recommends \
-    libglib2.0-0 libsm6 libxrender1 libxext6 \ # cv2
+    libglib2.0-0 libsm6 libxrender1 libxext6 \
     wget \
     curl \
     git \

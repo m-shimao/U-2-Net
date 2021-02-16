@@ -230,7 +230,7 @@ class CustomAug(object):
 		imidx, image, label = sample['imidx'], sample['image'],sample['label']
 		aug = A.Compose([
 			A.HorizontalFlip(p=0.5),
-			A.Rotate(limit=15, p=0.5),
+			A.Rotate(limit=30, p=0.8),
 			A.Downscale(p=0.1),
 			A.GaussNoise(p=0.1),
 			A.ISONoise(p=0.1),
