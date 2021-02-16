@@ -1,4 +1,4 @@
-portrait の再現実験のためにFork
+# m-shimao: portrait の再現実験のためにFork
 
 # U^2-Net (U square net)
 
